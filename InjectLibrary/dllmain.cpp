@@ -69,13 +69,13 @@ BOOL APIENTRY DllMain(HMODULE hModule,
 		if (host != NULL)
 		{
 			std::cout << "Get CLR Runtime Host succeeded: 0x" << std::hex << host << std::endl;
-
+			DWORD* retval = nullptr;
 			auto result = host->ExecuteInDefaultAppDomain(
 				L"C:\\Users\\admin\\Desktop\\cppsamples\\Simple-Manual-Map-Injector\\ClassLibrary\\bin\\Debug\\net8.0\\ClassLibrary.dll",
 				L"ClassLibrary.MainWindow",
 				L"Print",
 				L"123131",
-				nullptr);
+				retval);
 
 			if (result == S_OK)
 			{

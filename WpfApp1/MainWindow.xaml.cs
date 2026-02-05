@@ -8,7 +8,7 @@ namespace WpfApp1
     /// </summary>
     public partial class MainWindow : Window
     {
-        public static object Print(string value)
+        public static void Print(string value)
         {
             Console.WriteLine("print value: " + value);
 
@@ -23,7 +23,6 @@ namespace WpfApp1
             //{
             //    MessageBox.Show(ex.ToString());
             //}
-            return null;
         }
 
         public MainWindow()
