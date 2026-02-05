@@ -1,11 +1,19 @@
-// CoreCLRHostWrapper.h
 #pragma once
 
 #include "coreclrhost.h"
 
 #include <windows.h>
+#include <unknwn.h>      // IUnknown 接口定义
+#include <objbase.h>     // COM 基础类型和函数
+
 #include <string>
-#include <unordered_map>
+#include <vector>
+#include <memory>
+#include <MSCorEE.h>
+
+
+// 定义 GetCLRRuntimeHost 函数指针类型
+typedef HRESULT(__stdcall* GetCLRRuntimeHostPtr)(REFIID riid, IUnknown** ppUnk);
 
 class CoreCLRHostWrapper
 {
@@ -20,29 +28,38 @@ private:
 	coreclr_shutdown_2_ptr m_coreclr_shutdown_2;
 	coreclr_create_delegate_ptr m_coreclr_create_delegate;
 	coreclr_execute_assembly_ptr m_coreclr_execute_assembly;
+	GetCLRRuntimeHostPtr m_get_clr_runtime_host;  // 新增
+
+	// ICLRRuntimeHost 相关成员
+	ICLRRuntimeHost* m_pClrRuntimeHost;
+	bool m_bClrHostInitialized;
 
 public:
 	// 默认构造函数 - 需要后续调用 Load(HMODULE)
 	CoreCLRHostWrapper()
-		: m_hCoreClr(nullptr), m_bInitialized(false)
+		: m_hCoreClr(nullptr), m_bInitialized(false), m_bClrHostInitialized(false)
 		, m_coreclr_initialize(nullptr)
 		, m_coreclr_set_error_writer(nullptr)
 		, m_coreclr_shutdown(nullptr)
 		, m_coreclr_shutdown_2(nullptr)
 		, m_coreclr_create_delegate(nullptr)
 		, m_coreclr_execute_assembly(nullptr)
+		, m_get_clr_runtime_host(nullptr)
+		, m_pClrRuntimeHost(nullptr)
 	{
 	}
 
 	// 构造函数 - 直接传入已获取的 HMODULE
 	explicit CoreCLRHostWrapper(HMODULE hCoreClr)
-		: m_hCoreClr(hCoreClr), m_bInitialized(false)
+		: m_hCoreClr(hCoreClr), m_bInitialized(false), m_bClrHostInitialized(false)
 		, m_coreclr_initialize(nullptr)
 		, m_coreclr_set_error_writer(nullptr)
 		, m_coreclr_shutdown(nullptr)
 		, m_coreclr_shutdown_2(nullptr)
 		, m_coreclr_create_delegate(nullptr)
 		, m_coreclr_execute_assembly(nullptr)
+		, m_get_clr_runtime_host(nullptr)
+		, m_pClrRuntimeHost(nullptr)
 	{
 		if (m_hCoreClr)
 		{
@@ -50,24 +67,11 @@ public:
 		}
 	}
 
-	// 构造函数 - 传入 coreclr.dll 路径（向后兼容）
-	explicit CoreCLRHostWrapper(const char* coreclrPath)
-		: m_hCoreClr(nullptr), m_bInitialized(false)
-		, m_coreclr_initialize(nullptr)
-		, m_coreclr_set_error_writer(nullptr)
-		, m_coreclr_shutdown(nullptr)
-		, m_coreclr_shutdown_2(nullptr)
-		, m_coreclr_create_delegate(nullptr)
-		, m_coreclr_execute_assembly(nullptr)
-	{
-		Load(coreclrPath);
-	}
-
 	~CoreCLRHostWrapper()
 	{
-		// 注意：不释放 HMODULE，因为它是外部传入的
-		// 只重置函数指针
+		ShutdownClrHost();
 		ResetFunctionPointers();
+		// 注意：不释放 HMODULE，因为它是外部传入的
 	}
 
 	// 使用已有的 HMODULE 初始化
@@ -88,45 +92,13 @@ public:
 		return m_bInitialized;
 	}
 
-	// 从路径加载 coreclr.dll（可选功能）
-	bool Load(const char* coreclrPath)
-	{
-		if (m_bInitialized)
-			return true;
-
-		if (!coreclrPath || strlen(coreclrPath) == 0)
-		{
-			// 尝试获取已加载的模块
-			m_hCoreClr = ::GetModuleHandleA("coreclr.dll");
-			if (m_hCoreClr == nullptr)
-			{
-				SetLastError(ERROR_MOD_NOT_FOUND);
-				return false;
-			}
-		}
-		else
-		{
-			m_hCoreClr = ::LoadLibraryA(coreclrPath);
-			if (m_hCoreClr == nullptr)
-				return false;
-		}
-
-		m_bInitialized = GetExportedFunctions();
-
-		if (!m_bInitialized)
-		{
-			::FreeLibrary(m_hCoreClr);
-			m_hCoreClr = nullptr;
-		}
-
-		return m_bInitialized;
-	}
-
 	// 重置函数指针（不释放 HMODULE）
 	void Reset()
 	{
+		ShutdownClrHost();
 		ResetFunctionPointers();
 		m_bInitialized = false;
+		m_bClrHostInitialized = false;
 	}
 
 	// 重新绑定函数（当 HMODULE 改变时）
@@ -138,7 +110,9 @@ public:
 
 	// 检查是否已初始化
 	bool IsInitialized() const { return m_bInitialized; }
+	bool IsClrHostInitialized() const { return m_bClrHostInitialized; }
 	HMODULE GetModuleHandle() const { return m_hCoreClr; }
+	ICLRRuntimeHost* GetClrRuntimeHost() const { return m_pClrRuntimeHost; }
 
 	// 获取函数地址（手动方式）
 	void* GetFunctionAddress(const char* functionName)
@@ -147,6 +121,91 @@ public:
 			return nullptr;
 
 		return ::GetProcAddress(m_hCoreClr, functionName);
+	}
+
+	// 新增：获取 GetCLRRuntimeHost 函数
+	GetCLRRuntimeHostPtr GetGetCLRRuntimeHost() const { return m_get_clr_runtime_host; }
+
+	// 新增：初始化 ICLRRuntimeHost
+	HRESULT InitializeClrHost()
+	{
+		if (m_bClrHostInitialized)
+			return S_OK;
+
+		if (!m_get_clr_runtime_host)
+		{
+			// 如果 GetCLRRuntimeHost 函数指针为空，尝试手动获取
+			m_get_clr_runtime_host = (GetCLRRuntimeHostPtr)::GetProcAddress(m_hCoreClr, "GetCLRRuntimeHost");
+			if (!m_get_clr_runtime_host)
+			{
+				std::cout << "GetCLRRuntimeHost function not found in coreclr.dll" << std::endl;
+				return E_FAIL;
+			}
+			else {
+				std::cout << "Successfully obtained GetCLRRuntimeHost function." << std::endl;
+			}
+		}
+
+		// 使用 IID_ICLRRuntimeHost 获取 ICLRRuntimeHost 接口
+		HRESULT hr = m_get_clr_runtime_host(IID_ICLRRuntimeHost, (IUnknown**)&m_pClrRuntimeHost);
+		if (FAILED(hr))
+		{
+			std::cout << "Failed to get ICLRRuntimeHost interface. HRESULT: " << std::hex << hr << std::endl;
+			m_pClrRuntimeHost = nullptr;
+			return hr;
+		}
+		else {
+			std::cout << "Successfully obtained ICLRRuntimeHost interface." << std::endl;
+		}
+
+		m_bClrHostInitialized = true;
+		return S_OK;
+	}
+
+	// 新增：关闭 ICLRRuntimeHost
+	HRESULT ShutdownClrHost()
+	{
+		if (m_pClrRuntimeHost && m_bClrHostInitialized)
+		{
+			m_pClrRuntimeHost->Stop();
+			m_pClrRuntimeHost->Release();
+			m_pClrRuntimeHost = nullptr;
+			m_bClrHostInitialized = false;
+		}
+		return S_OK;
+	}
+
+	// 新增：执行托管代码（使用 ICLRRuntimeHost）
+	HRESULT ExecuteAssemblyUsingClrHost(const wchar_t* assemblyPath, const wchar_t* typeName, const wchar_t* methodName)
+	{
+		if (!m_bClrHostInitialized || !m_pClrRuntimeHost)
+		{
+			return E_FAIL;
+		}
+
+		DWORD exitCode = 0;
+		HRESULT hr = m_pClrRuntimeHost->ExecuteInDefaultAppDomain(
+			assemblyPath,
+			typeName,
+			methodName,
+			L"arg1 arg2",  // 参数
+			&exitCode
+		);
+
+		return hr;
+	}
+
+	// 新增：直接调用 GetCLRRuntimeHost 的静态方法
+	static HRESULT GetCLRRuntimeHostDirectly(HMODULE hCoreClr, REFIID riid, IUnknown** ppUnk)
+	{
+		if (!hCoreClr)
+			return E_INVALIDARG;
+
+		GetCLRRuntimeHostPtr getHost = (GetCLRRuntimeHostPtr)::GetProcAddress(hCoreClr, "GetCLRRuntimeHost");
+		if (!getHost)
+			return E_FAIL;
+
+		return getHost(riid, ppUnk);
 	}
 
 	// 导出的函数调用接口
@@ -221,7 +280,10 @@ private:
 		m_coreclr_create_delegate = (coreclr_create_delegate_ptr)::GetProcAddress(m_hCoreClr, "coreclr_create_delegate");
 		m_coreclr_execute_assembly = (coreclr_execute_assembly_ptr)::GetProcAddress(m_hCoreClr, "coreclr_execute_assembly");
 
-		// 验证所有必需的函数都已找到
+		// 新增：获取 GetCLRRuntimeHost 函数
+		m_get_clr_runtime_host = (GetCLRRuntimeHostPtr)::GetProcAddress(m_hCoreClr, "GetCLRRuntimeHost");
+
+		// 验证核心函数是否已找到（GetCLRRuntimeHost 是可选的，取决于使用方式）
 		if (!m_coreclr_initialize || !m_coreclr_set_error_writer || !m_coreclr_shutdown ||
 			!m_coreclr_shutdown_2 || !m_coreclr_create_delegate || !m_coreclr_execute_assembly)
 		{
@@ -240,5 +302,6 @@ private:
 		m_coreclr_shutdown_2 = nullptr;
 		m_coreclr_create_delegate = nullptr;
 		m_coreclr_execute_assembly = nullptr;
+		m_get_clr_runtime_host = nullptr;  // 新增
 	}
 };

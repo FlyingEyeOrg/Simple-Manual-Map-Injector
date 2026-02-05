@@ -2,13 +2,16 @@
 #include "pch.h"
 #include <iostream>
 #include "CoreCLRHostWrapper.h"
+#include <mscoree.h>
+
+
 
 extern "C" __declspec(dllexport) void PrintHello()
 {
 	std::cout << "Hello world!" << std::endl;
 }
-
-typedef void* (*print_func_t)(const char*);
+class Assembly {};
+typedef Assembly* (*print_func_t)(const char*);
 
 using host_handle_t = void*;
 using domain_id_t = std::uint32_t;
@@ -50,6 +53,8 @@ BOOL APIENTRY DllMain(HMODULE hModule,
 		std::cout << "domain_id address: 0x" << std::hex << domain_id << std::endl;
 
 		CoreCLRHostWrapper wrapper(hCoreClr);
+		wrapper.InitializeClrHost();
+
 		void* func_ptr = nullptr;
 		auto hr = wrapper.coreclr_create_delegate_wrapper(
 			host_handle,
@@ -58,6 +63,32 @@ BOOL APIENTRY DllMain(HMODULE hModule,
 			"WpfApp1.MainWindow",
 			"Print",
 			&func_ptr);
+
+		auto host = wrapper.GetClrRuntimeHost();
+
+		if (host != NULL)
+		{
+			std::cout << "Get CLR Runtime Host succeeded: 0x" << std::hex << host << std::endl;
+
+			auto result = host->ExecuteInDefaultAppDomain(
+				L"C:\\Users\\admin\\Desktop\\cppsamples\\Simple-Manual-Map-Injector\\ClassLibrary\\bin\\Debug\\net8.0\\ClassLibrary.dll",
+				L"ClassLibrary.MainWindow",
+				L"Print",
+				L"123131",
+				nullptr);
+
+			if (result == S_OK)
+			{
+				std::cout << "ExecuteInDefaultAppDomain succeeded." << std::endl;
+			}
+			else
+			{
+				std::cout << "ExecuteInDefaultAppDomain failed. HRESULT: 0x" << std::hex << result << std::endl;
+			}
+		}
+		else {
+			std::cout << "Get CLR Runtime Host failed." << std::endl;
+		}
 
 		//auto hr = wrapper.coreclr_create_delegate_wrapper(
 		//	host_handle,
@@ -75,15 +106,15 @@ BOOL APIENTRY DllMain(HMODULE hModule,
 		//	"LoadFile",
 		//	&func_ptr);
 
-		if (hr != 0 || func_ptr == nullptr) {
-			std::cout << "coreclr_create_delegate_wrapper failed: 0x" << std::hex << hr << std::endl;
-		}
-		else {
-			std::cout << "coreclr_create_delegate_wrapper succeeded, print_func: 0x" << std::hex << func_ptr << std::endl;
-			auto loadFile = reinterpret_cast<print_func_t>(func_ptr);
-			//loadFile("sfsfdsf");
-			loadFile("C:\\Users\\admin\\Desktop\\cppsamples\\Simple-Manual-Map-Injector\\ClassLibrary\\bin\\Debug\\net8.0\\ClassLibrary.dll");
-		}
+		//if (hr != 0 || func_ptr == nullptr) {
+		//	std::cout << "coreclr_create_delegate_wrapper failed: 0x" << std::hex << hr << std::endl;
+		//}
+		//else {
+		//	std::cout << "coreclr_create_delegate_wrapper succeeded, print_func: 0x" << std::hex << func_ptr << std::endl;
+		//	auto loadFile = reinterpret_cast<print_func_t>(func_ptr);
+		//	//loadFile("sfsfdsf");
+		//	//loadFile("C:\\Users\\admin\\Desktop\\cppsamples\\Simple-Manual-Map-Injector\\ClassLibrary\\bin\\Debug\\net8.0\\ClassLibrary.dll");
+		//}
 	}
 
 	switch (ul_reason_for_call)

@@ -5,6 +5,7 @@
 #include <string>
 #include <iostream>
 
+
 using namespace std;
 
 bool IsCorrectTargetArchitecture(HANDLE hProc) {
@@ -42,7 +43,7 @@ DWORD GetProcessIdByName(wchar_t* name) {
 int wmain(int argc, wchar_t* argv[], wchar_t* envp[]) {
 
 	const wchar_t* dllPath = L"C:\\Users\\admin\\Desktop\\cppsamples\\Simple-Manual-Map-Injector\\x64\\Debug\\InjectLibrary.dll";
-	DWORD PID = 30576;
+	DWORD PID = 24256;
 	//if (argc == 3) {
 	//	dllPath = argv[1];
 	//	PID = GetProcessIdByName(argv[2]);
