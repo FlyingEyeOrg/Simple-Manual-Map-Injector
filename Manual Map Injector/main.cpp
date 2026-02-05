@@ -41,29 +41,29 @@ DWORD GetProcessIdByName(wchar_t* name) {
 
 int wmain(int argc, wchar_t* argv[], wchar_t* envp[]) {
 
-	wchar_t* dllPath;
-	DWORD PID;
-	if (argc == 3) {
-		dllPath = argv[1];
-		PID = GetProcessIdByName(argv[2]);
-	}
-	else if (argc == 2) {
-		dllPath = argv[1];
-		std::string pname;
-		printf("Process Name:\n");
-		std::getline(std::cin, pname);
+	const wchar_t* dllPath = L"C:\\Users\\admin\\Desktop\\cppsamples\\Simple-Manual-Map-Injector\\x64\\Debug\\InjectLibrary.dll";
+	DWORD PID = 30576;
+	//if (argc == 3) {
+	//	dllPath = argv[1];
+	//	PID = GetProcessIdByName(argv[2]);
+	//}
+	//else if (argc == 2) {
+	//	dllPath = argv[1];
+	//	std::string pname;
+	//	printf("Process Name:\n");
+	//	std::getline(std::cin, pname);
 
-		char* vIn = (char*)pname.c_str();
-		wchar_t* vOut = new wchar_t[strlen(vIn) + 1];
-		mbstowcs_s(NULL, vOut, strlen(vIn) + 1, vIn, strlen(vIn));
-		PID = GetProcessIdByName(vOut);
-	}
-	else {
-		printf("Invalid Params\n");
-		printf("Usage: dll_path [process_name]\n");
-		system("pause");
-		return 0;
-	}
+	//	char* vIn = (char*)pname.c_str();
+	//	wchar_t* vOut = new wchar_t[strlen(vIn) + 1];
+	//	mbstowcs_s(NULL, vOut, strlen(vIn) + 1, vIn, strlen(vIn));
+	//	PID = GetProcessIdByName(vOut);
+	//}
+	//else {
+	//	printf("Invalid Params\n");
+	//	printf("Usage: dll_path [process_name]\n");
+	//	system("pause");
+	//	return 0;
+	//}
 
 	if (PID == 0) {
 		printf("Process not found\n");
@@ -126,7 +126,7 @@ int wmain(int argc, wchar_t* argv[], wchar_t* envp[]) {
 		return -6;
 	}
 
-	BYTE * pSrcData = new BYTE[(UINT_PTR)FileSize];
+	BYTE* pSrcData = new BYTE[(UINT_PTR)FileSize];
 	if (!pSrcData) {
 		printf("Can't allocate dll file.\n");
 		File.close();
