@@ -42,8 +42,9 @@ DWORD GetProcessIdByName(wchar_t* name) {
 
 int wmain(int argc, wchar_t* argv[], wchar_t* envp[]) {
 
-	const wchar_t* dllPath = L"C:\\Users\\admin\\Desktop\\cppsamples\\Simple-Manual-Map-Injector\\x64\\Debug\\InjectLibrary.dll";
-	DWORD PID = 20956;
+	//const wchar_t* dllPath = L"C:\\Users\\admin\\Desktop\\cppsamples\\Simple-Manual-Map-Injector\\x64\\Debug\\FrameworkInjectLibrary.dll";
+	const wchar_t* dllPath = L"E:\\tools\\Simple-Manual-Map-Injector\\x64\\Debug\\FrameworkInjectLibrary.dll";
+	DWORD PID = 31920;
 	//if (argc == 3) {
 	//	dllPath = argv[1];
 	//	PID = GetProcessIdByName(argv[2]);
